@@ -14,7 +14,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).parent
 DEFAULT_BALANCE = BASE_DIR / "data" / "balance.csv"
 DEFAULT_TRANSACTIONS = BASE_DIR / "data" / "transactions.csv"
-ENV_API_KEY = os.getenv("GOOGLE_AI_API_KEY") or os.getenv("GEMINI_API_KEY") or ""
+API_KEY_NAMES = ("GOOGLE_AI_API_KEY", "GEMINI_API_KEY")
 
 st.set_page_config(
     page_title="금융 챗봇 MVP",
@@ -33,22 +33,65 @@ def load_data(balance_path: str, transactions_path: str) -> tuple[pd.DataFrame, 
     return balance, transactions
 
 
+def _secrets_available() -> bool:
+    try:
+        _ = len(st.secrets)
+        return True
+    except Exception:
+        return False
+
+
+def _read_secret(name: str) -> str:
+    if not _secrets_available():
+        return ""
+    try:
+        if name in st.secrets:
+            return str(st.secrets[name]).strip()
+    except Exception:
+        return ""
+    return ""
+
+
+def get_configured_api_key() -> str:
+    for name in API_KEY_NAMES:
+        secret_value = _read_secret(name)
+        if secret_value:
+            return secret_value
+
+    for name in API_KEY_NAMES:
+        env_value = os.getenv(name, "").strip()
+        if env_value:
+            return env_value
+    return ""
+
+
+def is_api_key_from_secrets() -> bool:
+    return any(_read_secret(name) for name in API_KEY_NAMES)
+
+
 def get_api_key() -> str:
     sidebar_key = st.session_state.get("google_ai_api_key", "").strip()
-    return sidebar_key or ENV_API_KEY.strip()
+    return sidebar_key or get_configured_api_key()
 
 
 def render_ai_settings() -> tuple[bool, str]:
     st.sidebar.header("Google AI Studio")
 
-    api_key = st.sidebar.text_input(
-        "API 키",
-        type="password",
-        value=ENV_API_KEY,
-        help="https://aistudio.google.com/apikey 에서 발급",
-        placeholder="AIza...",
-    )
-    st.session_state.google_ai_api_key = api_key
+    configured_key = get_configured_api_key()
+    using_secrets = is_api_key_from_secrets()
+
+    if using_secrets:
+        st.sidebar.info("Streamlit Secrets에서 API 키가 설정되었습니다.")
+        st.session_state.google_ai_api_key = ""
+    else:
+        api_key = st.sidebar.text_input(
+            "API 키",
+            type="password",
+            value=configured_key,
+            help="https://aistudio.google.com/apikey 에서 발급",
+            placeholder="AIza...",
+        )
+        st.session_state.google_ai_api_key = api_key
 
     has_key = bool(get_api_key())
     use_gemini = st.sidebar.toggle(
@@ -59,11 +102,14 @@ def render_ai_settings() -> tuple[bool, str]:
     )
 
     if not has_key:
-        st.sidebar.warning("API 키를 입력하거나 .env에 GOOGLE_AI_API_KEY를 설정하세요.")
+        st.sidebar.warning(
+            "API 키를 입력하거나 `.env` / Streamlit Secrets에 GOOGLE_AI_API_KEY를 설정하세요."
+        )
     else:
-        st.sidebar.success("Gemini AI 연결 준비됨")
+        source = "Streamlit Secrets" if using_secrets else "환경 설정"
+        st.sidebar.success(f"Gemini AI 연결 준비됨 ({source})")
 
-    st.sidebar.caption("`.env.example`을 참고해 `.env` 파일을 만들 수 있습니다.")
+    st.sidebar.caption("로컬: `.env` | Streamlit Cloud: 앱 Settings → Secrets")
     return use_gemini and has_key, get_api_key()
 
 
