@@ -5,7 +5,7 @@ import google.generativeai as genai
 from src.context_builder import build_financial_context_text
 from src.qa_engine import FinancialContext
 
-DEFAULT_MODEL = "gemini-2.0-flash"
+DEFAULT_MODEL = "gemini-2.5-flash"
 
 SYSTEM_INSTRUCTION = """당신은 금융 포트폴리오 분석 챗봇입니다.
 
